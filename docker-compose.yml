@@ -1,0 +1,49 @@
+# =============================================================================
+# Local warehouse host — PostgreSQL 16 + PostGIS 3.4
+# =============================================================================
+# Brings up the single service the whole project runs on.
+#
+#   docker compose up -d          start
+#   docker compose logs -f        watch init
+#   docker compose down           stop (data survives in the named volume)
+#   docker compose down -v        stop AND DESTROY all warehouse data
+#
+# Credentials below are local-development only. The port is bound to 127.0.0.1,
+# so the database is not reachable from outside this machine.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: dwh_postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: datawarehouse
+      POSTGRES_USER: dwh
+      POSTGRES_PASSWORD: dwh_local_dev
+      # Deterministic sorting, so ORDER BY results don't shift with host locale.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+
+    ports:
+      - "127.0.0.1:5432:5432"
+
+    volumes:
+      # Read-only source drop. proc_load_bronze() COPYs from /datasets, which is
+      # the PostgreSQL analogue of the reference project's BULK INSERT.
+      - ./datasets:/datasets:ro
+      # Runs ONCE, only when the data volume is empty. To re-run it after edits:
+      #   docker compose down -v && docker compose up -d
+      - ./scripts/init_database.sql:/docker-entrypoint-initdb.d/01_init_database.sql:ro
+      - pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dwh -d datawarehouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  pgdata:
+    name: dwh_pgdata
