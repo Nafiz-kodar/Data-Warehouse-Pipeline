@@ -169,9 +169,9 @@ Bronze is populated and there is something real to transform.
 | **4. Bronze** | `ddl_bronze.sql`, `proc_load_bronze.sql` | ✅ |
 | **5. Silver** | `ddl_silver.sql`, `proc_load_silver.sql` — D1–D15 resolved | ✅ |
 | **6. Gold** | `ddl_gold.sql` — star-schema views | ✅ |
-| **7. Preprocessing** | `02_data_preprocessing.ipynb` — drives phases 5–6 via `jupysql`, validates output | ⬜ Next |
-| **8. Testing** | `quality_checks_silver.sql`, `quality_checks_gold.sql` | ⬜ |
-| **9. Documentation** | `data_catalog.md`, `naming_conventions.md` | ⬜ |
+| **7. Preprocessing** | `02_data_preprocessing.ipynb` — rebuilds, validates and visualises via `jupysql` | ✅ |
+| **8. Testing** | `quality_checks_silver.sql` (33), `quality_checks_gold.sql` (32) — 65/65 pass | ✅ |
+| **9. Documentation** | `data_catalog.md`, `naming_conventions.md`, `README.md` | ⬜ Next |
 
 ### Target repository structure
 
