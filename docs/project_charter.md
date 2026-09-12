@@ -159,9 +159,9 @@ Bronze is populated and there is something real to transform.
 |---|---|---|
 | **1. Charter** | `docs/project_charter.md` | ✅ |
 | **2. Data cleaning** | `01_data_cleaning.ipynb` → `cleaning_spec.md`, `defect_register.csv` | ✅ |
-| **3. Infrastructure** | `docker-compose.yml`, `init_database.sql` | ⬜ Next |
-| **4. Bronze** | `ddl_bronze.sql`, `proc_load_bronze.sql` | ⬜ |
-| **5. Silver** | `ddl_silver.sql`, `proc_load_silver.sql` — D1–D13 resolved | ⬜ |
+| **3. Infrastructure** | `docker-compose.yml`, `init_database.sql` | ✅ |
+| **4. Bronze** | `ddl_bronze.sql`, `proc_load_bronze.sql` | ✅ |
+| **5. Silver** | `ddl_silver.sql`, `proc_load_silver.sql` — D1–D13 resolved | ⬜ Next |
 | **6. Gold** | `ddl_gold.sql` — star-schema views | ⬜ |
 | **7. Preprocessing** | `02_data_preprocessing.ipynb` — drives phases 5–6 via `jupysql`, validates output | ⬜ |
 | **8. Testing** | `quality_checks_silver.sql`, `quality_checks_gold.sql` | ⬜ |
