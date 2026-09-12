@@ -1,6 +1,6 @@
 # Boston Short-Term Rental Data Warehouse — Project Charter
 
-**Status:** Phase 1 — approved
+**Status:** Complete — all 9 phases delivered · 65/65 quality checks passing
 **Source:** Inside Airbnb public extract, Boston MA, scraped 2026-06-15 → 2026-07-06
 **Reference architecture:** [DataWithBaraa/sql-data-warehouse-project](https://github.com/DataWithBaraa/sql-data-warehouse-project) (Medallion: Bronze → Silver → Gold)
 
@@ -171,7 +171,7 @@ Bronze is populated and there is something real to transform.
 | **6. Gold** | `ddl_gold.sql` — star-schema views | ✅ |
 | **7. Preprocessing** | `02_data_preprocessing.ipynb` — rebuilds, validates and visualises via `jupysql` | ✅ |
 | **8. Testing** | `quality_checks_silver.sql` (33), `quality_checks_gold.sql` (32) — 65/65 pass | ✅ |
-| **9. Documentation** | `data_catalog.md`, `naming_conventions.md`, `README.md` | ⬜ Next |
+| **9. Documentation** | `data_catalog.md`, `naming_conventions.md`, `README.md` | ✅ |
 
 ### Target repository structure
 
