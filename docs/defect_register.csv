@@ -1,0 +1,14 @@
+id,defect,measured,silver_resolution
+D1,"Three scrape dates, not one snapshot","3 dates: 2026-06-15: 628 · 2026-06-16: 2,904 · 2026-07-06: 846",Preserve last_scraped as scrape_date; FK into dim_date
+D2,"Price stored as text with $ and , ","3,693 text values with $ and , separators","REPLACE($ and ,) then CAST to numeric(10,2)"
+D3,Price disagrees between sources,"2,300 of 4,378 shared listings differ (rounding)",Detailed wins (exact cents); summary used only for D5 rows
+D4,Price missing,"685 of 4,378 listings have no price",Keep NULL — absence is meaningful; never impute
+D5,Listings present only in summary export,36 listings exist only in the summary export,FULL OUTER integrate; flag is_detail_sourced = false
+D6,Orphan review foreign keys,23 listings / 493 review rows orphaned vs detailed,Resolve against integrated listing set (all rescued by D5)
+D7,Amenities is a JSON array in text,"1,434 distinct amenities across 155,233 listing-amenity pairs",jsonb_array_elements_text -> dim_amenity + bridge_listing_amenity
+D8,bathrooms NULL though text present,"1,030 NULL bathrooms; 1,030 recoverable from bathrooms_text","COALESCE(bathrooms, regexp parse of bathrooms_text; half-bath -> 0.5)"
+D9,Columns that are entirely NULL,"13 columns are 100% NULL: calendar_updated, host_acceptance_rate, host_neighbourhood, host_response_rate, host_response_time, host_since, host_thumbnail_url, host_total_listings_count, host_verifications, instant_bookable, neighborhood_overview, neighbourhood, neighbourhood_group_cleansed",Drop at Silver — carry no information
+D10,neighbourhood_group unused,neighbourhood_group empty in summary=True and detailed=True,Drop — Boston has no neighbourhood-group tier
+D11,Listings with no reviews,901 listings have no review scores (901 have zero reviews),"Legitimate NULL scores; exclude from rating aggregates, do not zero-fill"
+D12,minimum_nights outlier,minimum_nights max=400; 1 listing(s) exceed 365,Retain value; flag is_outlier for transparency
+D13,Booleans encoded as 't'/'f' text,"4 columns use 't'/'f' text: host_is_superhost, host_has_profile_pic, host_identity_verified, has_availability",CAST to native boolean
