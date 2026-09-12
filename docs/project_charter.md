@@ -1,0 +1,197 @@
+# Boston Short-Term Rental Data Warehouse — Project Charter
+
+**Status:** Phase 1 — approved
+**Source:** Inside Airbnb public extract, Boston MA, scraped 2026-06-15 → 2026-07-06
+**Reference architecture:** [DataWithBaraa/sql-data-warehouse-project](https://github.com/DataWithBaraa/sql-data-warehouse-project) (Medallion: Bronze → Silver → Gold)
+
+---
+
+## 1. Motivation
+
+Inside Airbnb publishes **raw scrapes, not analysis-ready data**. The drop we received is two overlapping
+exports of the same market, and analysing it directly is unreliable for reasons that are structural rather
+than cosmetic:
+
+- **Two disagreeing sources.** A 19-column summary export and a 90-column detailed export cover the same
+  city but not the same rows — neither is a superset of the other.
+- **Money stored as text.** `$347.40` in one file, rounded to `347` in the other, for the same listing.
+- **Collections stuffed into strings.** 1,432 distinct amenities live inside a JSON array in a text column.
+- **Columns that are entirely empty.** Three of the 90 detailed columns are 100% NULL.
+- **Broken referential integrity.** 493 review rows point at listings that do not exist in the detailed export.
+- **Not one point in time.** Rows were captured across three different days, three weeks apart.
+
+Every analyst who touches these CSVs re-solves the same problems, differently, in a private notebook. This
+project moves that work **once, into a database**, so that the cleaning is versioned, reproducible by anyone
+with a connection string, and queryable as a dimensional model instead of a pile of files.
+
+---
+
+## 2. Source data observations
+
+### 2.1 Inventory
+
+| File | Rows | Cols | Role | Decision |
+|---|---:|---:|---|---|
+| `listings.csv` | 4,414 | 19 | Summary listings | **Load** — sole source of 36 listings |
+| `listings 2.csv` | 4,378 | 90 | Detailed listings | **Load** — authoritative for attributes |
+| `reviews 2.csv` | 252,910 | 6 | Detailed reviews (with text) | **Load** |
+| `reviews.csv` | 252,910 | 2 | Summary reviews | **Drop — proven redundant** |
+| `neighbourhoods.csv` | 26 | 2 | Neighbourhood lookup | **Load** |
+| `neighbourhoods.geojson` | 26 | — | MultiPolygon boundaries | **Load** (PostGIS) |
+
+`reviews.csv` is excluded on evidence, not assumption: its `(listing_id, date)` multiset is **identical** to
+`reviews 2.csv`, which carries the same rows plus `review_id`, `reviewer_id`, `reviewer_name` and `comments`.
+It contributes zero information.
+
+### 2.2 Defect register
+
+Every item below is measured, and each maps to a named Silver-layer rule.
+
+| # | Defect | Measured | Silver resolution |
+|---|---|---|---|
+| D1 | Three scrape dates, not one | 06-15: 628 · 06-16: 2,904 · 07-06: 846 | Preserve as `scrape_date`, FK to `dim_date` |
+| D2 | Price is text with `$` and `,` | 4,378 rows | Cast to `numeric(10,2)` |
+| D3 | Price disagrees across sources | 2,277 rows differ | Detail wins (exact); summary only for the 36 orphans |
+| D4 | Price missing | 685 of 4,378 | Keep NULL — absence is meaningful, do not impute |
+| D5 | 36 listings only in summary | 36 | Integrate; flag `is_detail_sourced = false` |
+| D6 | Orphan review FKs | 23 listings / 493 rows | Resolve against integrated listing set (all 23 exist in summary) |
+| D7 | `amenities` is a JSON array | 1,432 distinct values | `jsonb_array_elements_text` → `dim_amenity` + bridge |
+| D8 | `bathrooms` NULL but text present | 1,030 NULL vs 35 NULL | `regexp_match` on `bathrooms_text` recovers ~995 |
+| D9 | 100%-NULL columns | `host_since`, `instant_bookable`, `neighbourhood` | Drop at Silver |
+| D10 | `neighbourhood_group` unused | All blank, both files | Drop — Boston has no group tier |
+| D11 | Listings with no reviews | 901 of 4,378 | Legitimate NULL review scores; exclude from rating aggregates |
+| D12 | `minimum_nights` outlier | max = 400 (1 row) | Retain, flag `is_outlier` |
+| D13 | Booleans as `'t'`/`'f'` | `host_is_superhost`, `has_availability` | Cast to real `boolean` |
+
+### 2.3 What is already clean
+
+Verified, so no effort is budgeted here: **1,406 hosts with zero attribute conflicts** (`dim_host` needs no
+conflict resolution); geojson names **exactly match** `neighbourhoods.csv` 26/26; summary and detail agree on
+neighbourhood for **every** shared listing; all 252,910 `review_id` values are unique; no duplicate listing IDs
+in either file. `Harbor Islands` has no listings — a legitimately empty dimension member, not an error.
+
+---
+
+## 3. Objectives
+
+| # | Objective | Done when |
+|---|---|---|
+| O1 | Reproducible ingestion | `CALL bronze.load_bronze()` rebuilds Bronze from the CSVs, unattended |
+| O2 | Cleaning encoded as versioned SQL | All 13 defects fixed in `proc_load_silver.sql`, none in a notebook |
+| O3 | Query-ready dimensional model | Gold star schema answers business questions without joins to raw |
+| O4 | Spatially enabled | Listings join to neighbourhood polygons via PostGIS |
+| O5 | Tested, not asserted | Quality-check suites gate both Silver and Gold |
+| O6 | Documented | Data catalog + naming conventions + lineage, as in the reference project |
+
+### Business questions the Gold layer must answer
+
+1. Which neighbourhoods yield the highest estimated revenue per listing?
+2. How do superhosts differ from regular hosts on rating, price and occupancy?
+3. Which amenities correlate with higher review scores or nightly price?
+4. How has review volume evolved across 17 years (2009–2026) and by neighbourhood?
+5. What is the price and availability distribution by room type and property type?
+6. How concentrated is the market — what share of listings belongs to multi-listing hosts?
+
+---
+
+## 4. Architecture decisions
+
+| # | Decision | Choice | Rationale |
+|---|---|---|---|
+| A1 | Engine | **PostgreSQL 16 + PostGIS** (Docker) | Real stored procedures keep the reference's `proc_load_*` structure intact; PostGIS handles the geojson natively |
+| A2 | Transform ownership | **SQL-authoritative** | The DB rebuilds standalone. Notebooks execute SQL via `jupysql` — they document and validate, never duplicate, the logic |
+| A3 | Bronze modelling | **Two source systems**, `summary_*` / `detail_*` | Mirrors the reference's `crm_`/`erp_` split and makes cross-source integration a real exercise |
+| A4 | Gold shape | **2 facts + 5 dims + 1 bridge** | Constellation with conformed dimensions; bridge models the amenity many-to-many correctly |
+| A5 | Listing fact grain | **`listing_key` + `scrape_date_key`** | Yields one row per listing today, absorbs future scrapes with no redesign |
+
+**A2 rationale in full.** PostgreSQL performs all three transforms that would otherwise justify Python —
+`jsonb_array_elements_text` for amenities, `regexp_match` for `bathrooms_text`, and PostGIS `ST_Contains` for
+the spatial join. Implementing them in pandas would place lineage outside the warehouse, make rebuilds depend
+on notebook cell-execution order, and reduce the medallion layers to a naming convention.
+
+---
+
+## 5. Target model
+
+```
+                          dim_date
+                     (2009-03-21 → 2026-07-04)
+                          |         |
+                          v         v
+   dim_host  ────────>  fact_listing_snapshot  <────────  dim_neighbourhood
+   (1,406)                   (4,378 rows)                    (26 + polygon)
+      │                    grain: listing                          ▲
+      │                         × scrape_date                      │
+      └──────────────>     dim_listing     ──────────────────────┘
+                            (4,414)
+                            │      │
+                            │      └────────>  fact_review
+                            v                   (252,910)
+                   bridge_listing_amenity      grain: one review
+                            │
+                            v
+                      dim_amenity
+                        (1,432)
+```
+
+**Facts.** `fact_listing_snapshot` carries price, availability, occupancy, estimated revenue and review-score
+measures. `fact_review` is grained at one row per review, keyed to listing and date.
+
+**Dimensions.** `dim_listing` holds 4,414 rows — the integrated union, so the 36 summary-only listings survive.
+`dim_neighbourhood` carries a PostGIS `geometry` column alongside the name.
+
+---
+
+## 6. Actionable approach
+
+| Phase | Deliverable | Status |
+|---|---|---|
+| **1. Charter** | This document | ✅ Approved |
+| **2. Cleaning & preprocessing** | `01_data_cleaning.ipynb`, `02_data_preprocessing.ipynb` | ⬜ Next |
+| **3. Infrastructure** | `docker-compose.yml`, `init_database.sql` | ⬜ |
+| **4. Bronze** | `ddl_bronze.sql`, `proc_load_bronze.sql` | ⬜ |
+| **5. Silver** | `ddl_silver.sql`, `proc_load_silver.sql`, D1–D13 resolved | ⬜ |
+| **6. Gold** | `ddl_gold.sql` — star-schema views | ⬜ |
+| **7. Testing** | `quality_checks_silver.sql`, `quality_checks_gold.sql` | ⬜ |
+| **8. Documentation** | `data_catalog.md`, `naming_conventions.md` | ⬜ |
+
+### Target repository structure
+
+```
+├── datasets/                 raw source drop (5 loaded files)
+├── docs/                     charter, catalog, conventions, architecture
+├── notebooks/                01_data_cleaning · 02_data_preprocessing
+├── scripts/
+│   ├── init_database.sql     schemas: bronze · silver · gold
+│   ├── bronze/               ddl + load procedure
+│   ├── silver/               ddl + load procedure
+│   └── gold/                 star-schema views
+├── tests/                    silver + gold quality checks
+└── docker-compose.yml        postgres:16 + postgis
+```
+
+### Naming conventions
+
+`snake_case` throughout. Bronze and Silver use `<source>_<entity>` (`detail_listings`); Gold uses
+`<type>_<entity>` (`dim_host`, `fact_review`, `bridge_listing_amenity`). Surrogate keys are `<entity>_key`;
+load procedures are `load_<layer>`. Full detail in `docs/naming_conventions.md`.
+
+---
+
+## 7. Success criteria
+
+1. A clean clone rebuilds the entire warehouse with `docker compose up` followed by two `CALL` statements.
+2. Bronze row counts match source files exactly — 4,414 / 4,378 / 252,910 / 26 / 26.
+3. All 13 registered defects are resolved in Silver, each traceable to a named SQL block.
+4. `dim_listing` holds 4,414 rows, proving the 36 summary-only listings survived integration.
+5. `fact_review` has zero orphan foreign keys.
+6. Both quality-check suites pass with no failures.
+7. All six business questions in §3 are answerable by a single query against Gold.
+
+---
+
+## 8. Out of scope
+
+Incremental/CDC loading (full truncate-and-reload only, matching the reference); calendar and pricing data
+(not in this drop); NLP on the 252,910 review texts — the column is warehoused, but sentiment modelling is a
+downstream project; any BI tool build-out; cities other than Boston.
