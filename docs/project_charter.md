@@ -15,8 +15,8 @@ than cosmetic:
 - **Two disagreeing sources.** A 19-column summary export and a 90-column detailed export cover the same
   city but not the same rows — neither is a superset of the other.
 - **Money stored as text.** `$347.40` in one file, rounded to `347` in the other, for the same listing.
-- **Collections stuffed into strings.** 1,432 distinct amenities live inside a JSON array in a text column.
-- **Columns that are entirely empty.** Three of the 90 detailed columns are 100% NULL.
+- **Collections stuffed into strings.** 1,434 distinct amenities live inside a JSON array in a text column.
+- **Columns that are entirely empty.** Thirteen of the 90 detailed columns are 100% NULL.
 - **Broken referential integrity.** 493 review rows point at listings that do not exist in the detailed export.
 - **Not one point in time.** Rows were captured across three different days, three weeks apart.
 
@@ -51,7 +51,7 @@ Every item below is measured, and each maps to a named Silver-layer rule.
 |---|---|---|---|
 | D1 | Three scrape dates, not one | 06-15: 628 · 06-16: 2,904 · 07-06: 846 | Preserve as `scrape_date`, FK to `dim_date` |
 | D2 | Price is text with `$` and `,` | 4,378 rows | Cast to `numeric(10,2)` |
-| D3 | Price disagrees across sources | 2,277 rows differ | Detail wins (exact); summary only for the 36 orphans |
+| D3 | Price disagrees across sources | 2,300 of 3,693 comparable rows | Detail wins (exact); summary only for the 36 orphans |
 | D4 | Price missing | 685 of 4,378 | Keep NULL — absence is meaningful, do not impute |
 | D5 | 36 listings only in summary | 36 | Integrate; flag `is_detail_sourced = false` |
 | D6 | Orphan review FKs | 23 listings / 493 rows | Resolve against integrated listing set (all 23 exist in summary) |
