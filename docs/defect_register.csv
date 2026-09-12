@@ -12,3 +12,5 @@ D10,neighbourhood_group unused,neighbourhood_group empty in summary=True and det
 D11,Listings with no reviews,901 listings have no review scores (901 have zero reviews),"Legitimate NULL scores; exclude from rating aggregates, do not zero-fill"
 D12,minimum_nights outlier,minimum_nights max=400; 1 listing(s) exceed 365,Retain value; flag is_outlier for transparency
 D13,Booleans encoded as 't'/'f' text,"4 columns use 't'/'f' text: host_is_superhost, host_has_profile_pic, host_identity_verified, has_availability",CAST to native boolean
+D14,INT32_MAX sentinel for 'no maximum stay',2147483647 appears as a sentinel in 4 columns; 9 listings unbounded,"NULLIF(col, 2147483647); preserve fact in has_unbounded_max_nights"
+D15,Self-intersecting neighbourhood polygons,4 of 26 fail ST_IsValid (detected at Silver load),"ST_MakeValid + CollectionExtract(...,3); flag geom_was_repaired"
