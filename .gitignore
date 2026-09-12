@@ -1,0 +1,15 @@
+# Python virtual environment (607MB — never commit)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Local overrides for docker-compose (credentials, ports)
+docker-compose.override.yml
+.env
